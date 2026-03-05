@@ -12,7 +12,7 @@ struct HomeView: View {
                     if selectedTab == 0 {
                         HomeContentView() // 下面拆分出来的主页内容
                     } else if selectedTab == 1 {
-                        StoreView()       // 商城
+                        StoreView()       // 商
                     } else if selectedTab == 2 {
                         TrainingView()    // 训练
                     } else {
