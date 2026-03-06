@@ -12,7 +12,7 @@ struct HomeView: View {
                     if selectedTab == 0 {
                         HomeContentView() // 下面拆分出来的主页内容
                     } else if selectedTab == 1 {
-                        StoreView()       // 商
+                        StoreView()       // 商场
                     } else if selectedTab == 2 {
                         TrainingView()    // 训练
                     } else {
@@ -37,11 +37,60 @@ struct DynamicFeedCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // 占位图
-            Rectangle().fill(Color.gray.opacity(0.2)).frame(height: 180).cornerRadius(15)
-                .overlay(Image(systemName: post.imageUrl).font(.largeTitle).foregroundColor(.gray))
+            // 👇 核心修改：替换原来的占位图逻辑，支持三种图片类型
+            Group {
+                // 1. 网络图片（以 http/https 开头）
+                if post.imageUrl.starts(with: "http") {
+                    AsyncImage(url: URL(string: post.imageUrl)) { phase in
+                        switch phase {
+                        case .empty:
+                            // 加载中显示进度条
+                            ProgressView()
+                                .frame(height: 180)
+                        case .success(let image):
+                            // 加载成功显示图片
+                            image
+                                .resizable()
+                                .scaledToFill() // 保持比例填充
+                                .frame(height: 180)
+                                .clipped() // 裁剪超出部分
+                        case .failure:
+                            // 加载失败显示占位图标
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundColor(.gray)
+                                .frame(height: 180)
+                        @unknown default:
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundColor(.gray)
+                                .frame(height: 180)
+                        }
+                    }
+                }
+                // 2. 本地图片（Assets 里的图片，不是系统图标）
+                else if UIImage(named: post.imageUrl) != nil {
+                    Image(post.imageUrl)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 180)
+                        .clipped()
+                }
+                // 3. 系统图标（兜底，比如你传的 camera.macro）
+                else {
+                    Image(systemName: post.imageUrl)
+                        .font(.largeTitle)
+                        .foregroundColor(.gray)
+                        .frame(height: 180)
+                }
+            }
+            .cornerRadius(15) // 保持原来的圆角
             
-            Text(post.content).font(.subheadline).fontWeight(.bold).foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
+            // 👇 以下部分完全保留你的原有代码
+            Text(post.content)
+                .font(.subheadline)
+                .fontWeight(.bold)
+                .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
             
             HStack {
                 Image(systemName: "heart").foregroundColor(.gray)

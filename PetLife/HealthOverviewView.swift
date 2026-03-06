@@ -3,6 +3,28 @@ import SwiftUI
 struct HealthOverviewView: View {
     // 隐藏系统自带的返回按钮，使用我们自定义的顶部
     @Environment(\.dismiss) var dismiss
+    @State private var showLogDataSheet: Bool = false
+    @State private var showAddReminderSheet: Bool = false
+    
+    // 👇 2. 用来存放所有提醒数据的数组 (放了两个模拟数据以便测试)
+    @State private var myReminders: [PetReminder] = [
+            PetReminder(
+                title: "狂犬疫苗",
+                lastActionDate: Date(),
+                nextReminderDate: Date().addingTimeInterval(86400 * 30), // 30天后
+                locationOrNote: "宠物医院",
+                icon: "syringe.fill",
+                iconColor: .red
+            ),
+            PetReminder(
+                title: "驱虫提醒",
+                lastActionDate: Date(),
+                nextReminderDate: Date().addingTimeInterval(86400 * 15), // 15天后
+                locationOrNote: "居家进行",
+                icon: "sparkles",
+                iconColor: .blue
+            )
+        ]
     
     var body: some View {
         ZStack {
@@ -47,13 +69,39 @@ struct HealthOverviewView: View {
                     .padding(.horizontal)
                     
                     // 4. 下次提醒列表
-                    ReminderListCard()
+                    ReminderListCard(reminders: myReminders) {
+                        showAddReminderSheet = true // 点击加号触发的操作
+                    }
                     
+                    Button(action: {
+                        showLogDataSheet = true
+                    }) {
+                        HStack(spacing: 10){
+                            Image(systemName:"plus.circle.fill").font(.title2)
+                            Text("记录今日宠物数据")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color(red: 0.98, green: 0.69, blue: 0.29)) // 使用你的主题亮橙色
+                        .cornerRadius(20)
+                        .shadow(color: Color.orange.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 10)
                     Spacer(minLength: 50)
                 }
             }
         }
         .navigationBarHidden(true) // 隐藏系统默认导航栏
+        .sheet(isPresented: $showAddReminderSheet) {
+            AddReminderView(reminders: $myReminders)
+        }
+        .sheet(isPresented: $showLogDataSheet){
+            LogHealthDataView()
+        }
     }
 }
 
@@ -183,16 +231,47 @@ struct SmallStatCard: View {
 
 // MARK: - 子组件：提醒列表卡片
 struct ReminderListCard: View {
+    // 接收外部传来的提醒列表
+    var reminders: [PetReminder]
+    // 点击添加按钮的闭包
+    var onAddClick: () -> Void
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("下次提醒")
-                .font(.headline)
-                .fontWeight(.bold)
-                .foregroundColor(Color(red: 0.35, green: 0.25, blue: 0.25))
+            HStack {
+                Text("下次提醒")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(Color(red: 0.35, green: 0.25, blue: 0.25))
+                
+                Spacer()
+                
+                // 添加提醒的小按钮
+                Button(action: onAddClick) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(Color(red: 0.98, green: 0.69, blue: 0.29))
+                        .font(.title3)
+                }
+            }
             
-            ReminderRow(icon: "syringe.fill", iconBg: Color.red.opacity(0.1), iconColor: .red, title: "狂犬疫苗", date: "2026-02-15 · 宠物医院")
-            
-            ReminderRow(icon: "sparkles", iconBg: Color.blue.opacity(0.1), iconColor: .blue, title: "驱虫提醒", date: "2026-02-05 · 居家进行")
+            if reminders.isEmpty {
+                Text("暂无提醒事项，毛孩子最近很健康哦！")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .padding(.top, 5)
+            } else {
+                // 遍历真实数据
+                ForEach(reminders) { reminder in
+                    ReminderRow(
+                        icon: reminder.icon,
+                        iconBg: reminder.iconColor.opacity(0.1),
+                        iconColor: reminder.iconColor,
+                        title: reminder.title,
+                        // 👇 这里改为 displayDateString
+                        date: reminder.displayDateString
+                    )
+                }
+            }
         }
         .padding()
         .background(Color.white)
@@ -228,7 +307,56 @@ struct ReminderRow: View {
         }
     }
 }
-
+struct AddReminderView: View {
+    @Environment(\.dismiss) var dismiss
+    @Binding var reminders: [PetReminder] // 绑定外部的数组，以便保存时添加进去
+    
+    @State private var title: String = ""
+    @State private var targetDate: Date = Date()
+    @State private var note: String = ""
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("提醒内容")) {
+                    TextField("例如：打狂犬疫苗、买猫粮", text: $title)
+                    TextField("备注/地点（例如：宠物医院）", text: $note)
+                }
+                
+                Section(header: Text("时间设置")) {
+                    // SwiftUI 自带的时间选择器
+                    DatePicker("选择日期和时间", selection: $targetDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                }
+            }
+            .navigationTitle("新建提醒")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("取消") { dismiss() }.foregroundColor(.gray)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("保存") {
+                        // 1. 生成一个新的提醒对象
+                        let newReminder = PetReminder(
+                            title: title.isEmpty ? "未命名提醒" : title,
+                            lastActionDate: Date(),
+                            nextReminderDate: targetDate,
+                            locationOrNote: note.isEmpty ? "无备注" : note,
+                            icon: "bell.fill", // 默认给个铃铛图标
+                            iconColor: .orange
+                        )
+                        // 2. 塞进数组里
+                        reminders.append(newReminder)
+                        // 3. 关闭弹窗
+                        dismiss()
+                    }
+                    .foregroundColor(Color(red: 0.98, green: 0.69, blue: 0.29))
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
 #Preview {
     HealthOverviewView()
 }
