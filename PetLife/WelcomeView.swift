@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct WelcomeView: View {
+    @EnvironmentObject var appViewModel: AppViewModel
     @State private var showHome = false
     
     var body: some View {
@@ -66,11 +67,13 @@ struct WelcomeView: View {
             }
         }
         .fullScreenCover(isPresented: $showHome) {
-            HomeView() // 跳转的目的地：主页
+            HomeView()
+                .environmentObject(appViewModel) // 👈 传递环境对象到新的视图层级
         }
     }
 }
 
 #Preview {
     WelcomeView()
+        .environmentObject(AppViewModel())
 }

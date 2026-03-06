@@ -8,10 +8,11 @@
 import Foundation
 import SwiftUI
 
-struct AddRemiderView: View {
+struct AddReminderView: View {
     @Environment(\.dismiss) var dismiss
     
-    @Binding var reminders: [PetReminder] // 绑定外部数组，保存时把新数据塞进去
+    // 👇 接住刚刚在 App 顶层注入的全局 ViewModel
+    @EnvironmentObject var appViewModel: AppViewModel
     
     @State private var title: String = ""
     @State private var location: String = ""
@@ -46,7 +47,7 @@ struct AddRemiderView: View {
                 }
                 ToolbarItem(placement: .confirmationAction){
                     Button("保存"){
-                        // 智能判断一下：如果标题包含"疫苗"，就用红色的针筒图标，否则用蓝色的星星图标
+                        //智能判断一下：如果标题包含"疫苗"，就用红色的针筒图标，否则用蓝色的星星图标
                         let isVaccine = title.contains("疫苗")
                         let newReminder = PetReminder(
                             title: title.isEmpty ? "未命名项目" : title,
@@ -54,11 +55,13 @@ struct AddRemiderView: View {
                             nextReminderDate: nextReminderDate,
                             locationOrNote: location.isEmpty ? "无备注" : location,
                             icon: isVaccine ? "syringe.fill" : "sparkles",
-                            iconColor: isVaccine ? .red : .blue
+                            iconColorName: isVaccine ? "red" : "blue"
                         )
-                        // 把新提醒加入数组
-                            reminders.append(newReminder)
-                            dismiss()
+                        
+                        // 把之前的 reminders.append 删掉，换成呼叫 ViewModel 上传数据！
+                        appViewModel.saveReminderToCloud(reminder: newReminder)
+                        
+                        dismiss()
                     }
                     .foregroundColor(Color(red: 0.98, green: 0.69, blue: 0.29))
                     .fontWeight(.bold)

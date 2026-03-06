@@ -7,9 +7,23 @@
 
 import SwiftUI
 import SwiftData
+import FirebaseCore
+
+
+class AppDelegate: NSObject, UIApplicationDelegate {
+  func application(_ application: UIApplication,
+                   didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    FirebaseApp.configure() // 👈 核心指令：唤醒 Firebase！
+    return true
+  }
+}
+
 
 @main
 struct PetLifeApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject var appViewModel = AppViewModel()
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -26,6 +40,7 @@ struct PetLifeApp: App {
     var body: some Scene {
         WindowGroup {
             WelcomeView()
+                .environmentObject(appViewModel)
         }
         .modelContainer(sharedModelContainer)
     }

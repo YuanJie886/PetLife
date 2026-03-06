@@ -1,36 +1,100 @@
 import SwiftUI
+//struct HomeView: View {
+//    // 👇  添加一个状态，记录当前选中的是哪个 Tab
+//    @State private var selectedTab: Int = 0
+//    @State private var showPublishSheet: Bool = false
+//    
+//    var body: some View {
+//        NavigationStack {
+//            ZStack(alignment: .bottom) {
+//                // 👇 根据选中的 Tab，显示不同的页面
+//                Group {
+//                    if selectedTab == 0 {
+//                        HomeContentView() // 下面拆分出来的主页内容
+//                    } else if selectedTab == 1 {
+//                        StoreView()       // 商场
+//                    } else if selectedTab == 2 {
+//                        TrainingView()    // 训练
+//                    } else {
+//                        ProfileView()
+//                    }
+//                }
+//                
+//                // 👇 把状态绑定给底部导航栏
+//                CustomTabBar(selectedTab: $selectedTab, onPublishClick: {
+//                                    showPublishSheet = true
+//                                })
+//            }
+//        }
+//        .sheet(isPresented: $showPublishSheet) {
+//                    PublishPostView()
+//        }
+//    }
+//}
+
+
 struct HomeView: View {
-    // 👇 1. 添加一个状态，记录当前选中的是哪个 Tab
     @State private var selectedTab: Int = 0
     @State private var showPublishSheet: Bool = false
     
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .bottom) {
-                // 👇 2. 根据选中的 Tab，显示不同的页面
-                Group {
-                    if selectedTab == 0 {
-                        HomeContentView() // 下面拆分出来的主页内容
-                    } else if selectedTab == 1 {
-                        StoreView()       // 商场
-                    } else if selectedTab == 2 {
-                        TrainingView()    // 训练
-                    } else {
-                        ProfileView()
-                    }
+        ZStack(alignment: .bottom) {
+            TabView(selection: $selectedTab) {
+                NavigationStack {
+                    HomeContentView()
                 }
+                    .tabItem {
+                        Label("首页", systemImage: "house.fill")
+                    }
+                    .tag(0)
                 
-                // 👇 3. 把状态绑定给底部导航栏
-                CustomTabBar(selectedTab: $selectedTab, onPublishClick: {
-                                    showPublishSheet = true
-                                })
+                StoreView()
+                    .tabItem {
+                        Label("商城", systemImage: "storefront.fill")
+                    }
+                    .tag(1)
+                
+                // 空占位，用于放置中间按钮
+                Color.clear
+                    .tabItem {
+                        Label("", systemImage: "plus.circle.fill")
+                    }
+                    .tag(2)
+                    .onAppear {
+                        showPublishSheet = true
+                        selectedTab = 0 // 立即切回首页，避免白屏
+                    }
+                
+                TrainingView()
+                    .tabItem {
+                        Label("训练", systemImage: "puzzlepiece.fill")
+                    }
+                    .tag(3)
+                
+                ProfileView()
+                    .tabItem {
+                        Label("我的", systemImage: "person.fill")
+                    }
+                    .tag(4)
+            }
+            .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
+            .accentColor(Color(red: 0.98, green: 0.69, blue: 0.29))
+            .onAppear {
+                // 调整 TabBar 外观，让中间按钮更突出
+                let appearance = UITabBarAppearance()
+                appearance.configureWithTransparentBackground()
+                UITabBar.appearance().standardAppearance = appearance
+                UITabBar.appearance().scrollEdgeAppearance = appearance
             }
         }
         .sheet(isPresented: $showPublishSheet) {
-                    PublishPostView()
-                }
+            PublishPostView()
+                .environmentObject(AppViewModel())
+        }
     }
 }
+
 
 struct DynamicFeedCard: View {
     var post: FeedPost
@@ -155,8 +219,8 @@ struct DynamicPetInfoCard: View {
 
 
 struct HomeContentView: View {
-    // 👇 1. 请入我们的数据管家
-    @StateObject private var viewModel = AppViewModel()
+    // 👇 1. 【核心修改】把 @StateObject 改成 @EnvironmentObject，使用全局统一的管家！
+    @EnvironmentObject var appViewModel: AppViewModel
     
     var body: some View {
         ZStack {
@@ -170,12 +234,11 @@ struct HomeContentView: View {
                     }
                     .padding(.horizontal).padding(.top, 10)
                     
-                    // 👇 2. 把真实数据传给宠物卡片
-                    DynamicPetInfoCard(pet: viewModel.myPet)
+                    // 👇 2. 【修改变量名】把 viewModel 改成 appViewModel
+                    DynamicPetInfoCard(pet: appViewModel.myPet)
                     
                     QuickActionsView()
                     
-                    // 👇 3. 把动态列表改成遍历真实数据
                     VStack(alignment: .leading, spacing: 15) {
                         HStack {
                             Text("热门动态")
@@ -190,17 +253,15 @@ struct HomeContentView: View {
                         }
                         .padding(.horizontal)
                         
-                        if viewModel.hotFeeds.isEmpty {
-                            // 数据还在加载中时显示个菊花圈
+                        // 👇 3. 【修改变量名】把 viewModel 改成 appViewModel
+                        if appViewModel.hotFeeds.isEmpty {
                             ProgressView("正在加载动态...").frame(maxWidth: .infinity)
                         } else {
-                            // 遍历渲染真实数据
-                            ForEach(viewModel.hotFeeds) { post in
-                                        // 👇 修改这里：给动态卡片包上一层 NavigationLink
+                            // 👇 4. 【修改变量名】把 viewModel 改成 appViewModel
+                            ForEach(appViewModel.hotFeeds) { post in
                                         NavigationLink(destination: FeedDetailView(post: post)) {
                                             DynamicFeedCard(post: post)
                                         }
-                                        // 防止整个卡片被 NavigationLink 渲染成蓝色高亮
                                         .buttonStyle(PlainButtonStyle())
                                     }
                         }
@@ -210,9 +271,9 @@ struct HomeContentView: View {
                 }
             }
         }
-        // 👇 4. 页面出现的时候，让管家去拉取数据
         .onAppear {
-            viewModel.loadData()
+            // 👇 5. 【修改变量名】调用全局管家的加载方法
+            appViewModel.loadData()
         }
     }
 }
@@ -467,4 +528,5 @@ struct HotFeedView: View {
 
 #Preview {
     HomeView()
+        .environmentObject(AppViewModel())
 }
