@@ -160,7 +160,7 @@ struct PublishPostView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .padding(.trailing, 8)
-                                Text("正在发布...")
+                        Text("正在发布...")
                             } else {
                                 Text("发布动态")
                             }
@@ -247,7 +247,7 @@ struct PublishPostView: View {
     private func saveFeed(imageUrl: String) {
         // 2. 创建动态模型
         let newFeed = FeedPost(
-            id: "", // 空ID，由Firebase自动生成
+            id: nil, // 空ID，由Firebase自动生成
             authorName: "布丁的主人", // 可替换为用户昵称（后续可扩展）
             authorAvatar: "person.circle.fill",
             content: postText,

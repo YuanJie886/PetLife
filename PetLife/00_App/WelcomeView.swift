@@ -26,7 +26,7 @@ struct WelcomeView: View {
                 
                 // 标题部分
                 VStack(spacing: 12) {
-                    Text("宠萌生活")
+                    Text("")
                         .font(.system(size: 32, weight: .bold))
                         .foregroundColor(Color(red: 0.35, green: 0.25, blue: 0.25)) // 深棕色
                     
@@ -34,10 +34,9 @@ struct WelcomeView: View {
                         .font(.system(size: 16))
                         .foregroundColor(.gray)
                 }
-                
                 Spacer()
                 
-                // 插画占位符 (后续在 Assets 中替换为你真实的图片)
+                // 插画占位符
                 VStack {
                     Image(systemName: "photo")
                         .font(.largeTitle)

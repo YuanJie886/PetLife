@@ -8,6 +8,11 @@ struct HealthOverviewView: View {
     @State private var showLogDataSheet: Bool = false
     @State private var showAddReminderSheet: Bool = false
     
+    
+    // 新增 用于编辑的状态
+    @State private var reminderToEdit: PetReminder?
+    @State private var reminderToDelete: PetReminder?
+    
     // 使用全局的 ViewModel 获取提醒事项数据
 
     
@@ -57,7 +62,7 @@ struct HealthOverviewView: View {
                             bgColor: Color(red: 0.92, green: 0.96, blue: 0.98)
                         )
                         
-                        // 绑定真实宠物状态（因为你之前删了卡路里，这里展示状态更符合逻辑）
+                        // 绑定真实宠物状态
                         SmallStatCard(
                             icon: "face.smiling.fill",
                             iconColor: .orange,
@@ -69,9 +74,18 @@ struct HealthOverviewView: View {
                     .padding(.horizontal)
                     
                     // 下次提醒列表
-                    ReminderListCard(reminders: appViewModel.myReminders) {
-                        showAddReminderSheet = true // 点击加号触发的操作
-                    }
+                    ReminderListCard(
+                        reminders: appViewModel.myReminders,
+                        onAddClick: {
+                            showAddReminderSheet = true
+                        },
+                        onEditClick: { reminder in
+                            reminderToEdit = reminder
+                        },
+                        onDeleteClick: { reminder in
+                            reminderToDelete = reminder
+                        }
+                    )
                     
                     Button(action: {
                         showLogDataSheet = true
@@ -98,7 +112,21 @@ struct HealthOverviewView: View {
         .navigationBarHidden(true) // 隐藏系统默认导航栏
         .sheet(isPresented: $showAddReminderSheet) {
             AddReminderView()
-                .environmentObject(appViewModel) // 👈 传递环境对象
+                .environmentObject(appViewModel) // 传递环境对象
+        }
+        .sheet(item: $reminderToEdit) { reminder in
+            EditReminderView(reminder: reminder)
+                .environmentObject(appViewModel)
+        }
+        .alert(item: $reminderToDelete) { reminder in
+            Alert(
+                title: Text("确认删除"),
+                message: Text("确定要删除这条提醒事项吗？"),
+                primaryButton: .destructive(Text("删除")) {
+                    appViewModel.deleteReminder(reminder: reminder)
+                },
+                secondaryButton: .cancel(Text("取消"))
+            )
         }
         .sheet(isPresented: $showLogDataSheet){
             LogHealthDataView()
@@ -202,6 +230,8 @@ struct ReminderListCard: View {
     var reminders: [PetReminder]
     // 点击添加按钮的闭包
     var onAddClick: () -> Void
+    var onEditClick: (PetReminder) -> Void
+    var onDeleteClick: (PetReminder) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -234,7 +264,9 @@ struct ReminderListCard: View {
                         iconBg: reminder.iconColor.opacity(0.1),
                         iconColor: reminder.iconColor,
                         title: reminder.title,
-                        date: reminder.displayDateString
+                        date: reminder.displayDateString,
+                        onEdit: { onEditClick(reminder) },
+                        onDelete: { onDeleteClick(reminder) }
                     )
                 }
             }
@@ -252,6 +284,8 @@ struct ReminderRow: View {
     let iconColor: Color
     let title: String
     let date: String
+    var onEdit: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
     
     var body: some View {
         HStack(spacing: 15) {
@@ -270,6 +304,26 @@ struct ReminderRow: View {
                     .foregroundColor(.gray)
             }
             Spacer()
+            
+            if onEdit != nil || onDelete != nil {
+                Menu {
+                    if let onEdit = onEdit {
+                        Button(action: onEdit) {
+                            Label("编辑", systemImage: "pencil")
+                        }
+                    }
+                    if let onDelete = onDelete {
+                        Button(role: .destructive, action: onDelete) {
+                            Label("删除", systemImage: "trash")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundColor(.gray)
+                        .padding(.vertical)
+                        .padding(.leading, 8)
+                }
+            }
         }
     }
 }

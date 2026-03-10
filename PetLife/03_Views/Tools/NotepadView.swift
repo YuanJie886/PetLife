@@ -1,9 +1,10 @@
 import SwiftUI
 import Foundation
 import Combine
+import FirebaseFirestore
 
 struct PetNote: Identifiable, Codable {
-    var id = UUID()
+    var id: String = UUID().uuidString
     var date: Date
     var mood: String
     var moodColorIndex: Int
@@ -32,52 +33,66 @@ struct PetNote: Identifiable, Codable {
 }
 
 class NotepadViewModel: ObservableObject {
-    @Published var notes: [PetNote] = [] {
-        didSet {
-            saveNotes()
-        }
-    }
+    @Published var notes: [PetNote] = []
+    
+    private var db = Firestore.firestore()
     
     init() {
-        loadNotes()
-        if notes.isEmpty {
-            // Mock data
-            notes = [
-                PetNote(date: Date().addingTimeInterval(-86400*2), mood: "sun.max.fill", moodColorIndex: 0, content: "今天给布丁洗了澡，它非常乖，没有闹腾！奖励了一个大罐头。🥩"),
-                PetNote(date: Date().addingTimeInterval(-86400*6), mood: "cloud.rain.fill", moodColorIndex: 1, content: "下雨天，布丁一整天都在睡懒觉，发现它有一点挑食，明天开始尝试换一下猫粮的牌子。"),
-                PetNote(date: Date().addingTimeInterval(-86400*11), mood: "heart.fill", moodColorIndex: 2, content: "带去打了今年的狂犬疫苗，体重涨了0.5kg，医生说是个健康的胖小子！")
-            ]
-        }
+        fetchNotesFromCloud()
     }
     
-    private let notesKey = "saved_pet_notes"
-    
-    func saveNotes() {
-        if let encoded = try? JSONEncoder().encode(notes) {
-            UserDefaults.standard.set(encoded, forKey: notesKey)
-        }
-    }
-    
-    func loadNotes() {
-        if let data = UserDefaults.standard.data(forKey: notesKey),
-           let decoded = try? JSONDecoder().decode([PetNote].self, from: data) {
-            notes = decoded
-        }
+    func fetchNotesFromCloud() {
+        db.collection("pet_notes")
+            .order(by: "date", descending: true)
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("❌ 获取日记失败: \(error.localizedDescription)")
+                    return
+                }
+                guard let documents = snapshot?.documents else { return }
+                
+                self.notes = documents.compactMap { try? $0.data(as: PetNote.self) }
+                print("✅ 从云端拉取了 \(self.notes.count) 条日记")
+            }
     }
     
     func addNote(content: String, mood: String, moodColorIndex: Int) {
         let newNote = PetNote(date: Date(), mood: mood, moodColorIndex: moodColorIndex, content: content)
-        notes.insert(newNote, at: 0) // prepend
+        do {
+            let noteRef = db.collection("pet_notes").document(newNote.id)
+            try noteRef.setData(from: newNote)
+            print("🚀 日记保存到云端成功！")
+        } catch {
+            print("❌ 保存日记失败: \(error.localizedDescription)")
+        }
     }
     
-    func deleteNote(at offsets: IndexSet) {
-        notes.remove(atOffsets: offsets)
+    func updateNote(note: PetNote) {
+        do {
+            let noteRef = db.collection("pet_notes").document(note.id)
+            try noteRef.setData(from: note)
+            print("✏️ 日记更新到云端成功！")
+        } catch {
+            print("❌ 更新日记失败: \(error.localizedDescription)")
+        }
+    }
+    
+    func deleteNote(note: PetNote) {
+        db.collection("pet_notes").document(note.id).delete { error in
+            if let error = error {
+                print("❌ 删除日记失败: \(error.localizedDescription)")
+            } else {
+                print("🗑️ 日记删除成功！")
+            }
+        }
     }
 }
 
 struct NotepadView: View {
     @StateObject private var viewModel = NotepadViewModel()
     @State private var showingAddSheet = false
+    @State private var noteToEdit: PetNote?
+    @State private var noteToDelete: PetNote?
 
     var body: some View {
         ZStack {
@@ -97,15 +112,11 @@ struct NotepadView: View {
                 ScrollView {
                     VStack(spacing: 15) {
                         ForEach(viewModel.notes) { note in
-                            DiaryCard(note: note) {
-                                // delete action
-                                if let index = viewModel.notes.firstIndex(where: { $0.id == note.id }) {
-                                    withAnimation {
-                                        viewModel.notes.remove(at: index)
-                                        viewModel.saveNotes()
-                                    }
-                                }
-                            }
+                            DiaryCard(note: note, onEdit: {
+                                noteToEdit = note
+                            }, onDelete: {
+                                noteToDelete = note
+                            })
                         }
                     }
                     .padding()
@@ -125,13 +136,27 @@ struct NotepadView: View {
         .sheet(isPresented: $showingAddSheet) {
             AddNoteView(viewModel: viewModel)
         }
+        .sheet(item: $noteToEdit) { note in
+            EditNoteView(viewModel: viewModel, note: note)
+        }
+        .alert(item: $noteToDelete) { note in
+            Alert(
+                title: Text("确认删除"),
+                message: Text("确定要删除这条日记吗？"),
+                primaryButton: .destructive(Text("删除")) {
+                    viewModel.deleteNote(note: note)
+                },
+                secondaryButton: .cancel(Text("取消"))
+            )
+        }
     }
 }
 
 // 日记卡片子组件
 struct DiaryCard: View {
     let note: PetNote
-    let onDelete: () -> Void
+    var onEdit: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -146,10 +171,24 @@ struct DiaryCard: View {
                 Image(systemName: note.mood)
                     .foregroundColor(note.moodColor)
                 
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red.opacity(0.6))
-                        .padding(.leading, 10)
+                if onEdit != nil || onDelete != nil {
+                    Menu {
+                        if let onEdit = onEdit {
+                            Button(action: onEdit) {
+                                Label("编辑", systemImage: "pencil")
+                            }
+                        }
+                        if let onDelete = onDelete {
+                            Button(role: .destructive, action: onDelete) {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .foregroundColor(.gray)
+                            .padding(.vertical)
+                            .padding(.leading, 8)
+                    }
                 }
             }
             
@@ -215,6 +254,70 @@ struct AddNoteView: View {
                 }
                 .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             )
+        }
+    }
+}
+
+
+struct EditNoteView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @ObservedObject var viewModel: NotepadViewModel
+    
+    var note: PetNote
+    
+    @State private var content: String = ""
+    @State private var selectedMood: String = "sun.max.fill"
+    @State private var selectedColorIndex: Int = 0
+    
+    let moods = ["sun.max.fill", "cloud.fill", "cloud.rain.fill", "moon.stars.fill", "heart.fill"]
+    let colors: [Color] = [.orange, .blue, .red, .green, .purple]
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("今天心情")) {
+                    HStack {
+                        ForEach(0..<moods.count, id: \.self) { index in
+                            Image(systemName: moods[index])
+                                .font(.title2)
+                                .foregroundColor(selectedMood == moods[index] ? colors[selectedColorIndex] : .gray.opacity(0.3))
+                                .padding(.horizontal, 4)
+                                .onTapGesture {
+                                    selectedMood = moods[index]
+                                    selectedColorIndex = index
+                                }
+                        }
+                    }
+                    .padding(.vertical, 5)
+                }
+                
+                Section(header: Text("日记内容")) {
+                    TextEditor(text: $content)
+                        .frame(minHeight: 150)
+                }
+            }
+            .navigationTitle("编辑日记")
+            .navigationBarItems(
+                leading: Button("取消") {
+                    presentationMode.wrappedValue.dismiss()
+                },
+                trailing: Button("保存") {
+                    if !content.isEmpty {
+                        var updatedNote = note
+                        updatedNote.content = content
+                        updatedNote.mood = selectedMood
+                        updatedNote.moodColorIndex = selectedColorIndex
+                        viewModel.updateNote(note: updatedNote)
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+                .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            )
+            .onAppear {
+                content = note.content
+                selectedMood = note.mood
+                selectedColorIndex = note.moodColorIndex
+            }
         }
     }
 }
