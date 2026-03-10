@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts // 导入系统框架
 
 struct HealthOverviewView: View {
     // 隐藏系统自带的返回按钮，使用我们自定义的顶部
@@ -17,7 +18,7 @@ struct HealthOverviewView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
                     
-                    // 1. 自定义顶部导航栏
+                    // 自定义顶部导航栏
                     HStack {
                         Button(action: {
                             dismiss() // 点击返回上一页
@@ -42,17 +43,32 @@ struct HealthOverviewView: View {
                     .padding(.horizontal)
                     .padding(.top, 10)
                     
-                    // 2. 体重趋势图表卡片
+                    // 体重趋势图表卡片
                     WeightChartCard()
                     
-                    // 3. 饮水量与卡路里卡片
+                    // 饮水量与卡路里卡片
                     HStack(spacing: 15) {
-                        SmallStatCard(icon: "cup.and.saucer.fill", iconColor: .green, title: "饮水量", value: "450ml", bgColor: Color(red: 0.92, green: 0.96, blue: 0.92))
-                        SmallStatCard(icon: "dumbbell.fill", iconColor: .orange, title: "卡路里", value: "1.2k", bgColor: Color(red: 1.0, green: 0.96, blue: 0.89))
+                        // 绑定真实饮水量
+                        SmallStatCard(
+                            icon: "drop.fill",
+                            iconColor: .cyan,
+                            title: "今日饮水",
+                            value: "\(appViewModel.myPet.waterIntake)ml",
+                            bgColor: Color(red: 0.92, green: 0.96, blue: 0.98)
+                        )
+                        
+                        // 绑定真实宠物状态（因为你之前删了卡路里，这里展示状态更符合逻辑）
+                        SmallStatCard(
+                            icon: "face.smiling.fill",
+                            iconColor: .orange,
+                            title: "当前状态",
+                            value: appViewModel.myPet.status,
+                            bgColor: Color(red: 1.0, green: 0.96, blue: 0.89)
+                        )
                     }
                     .padding(.horizontal)
                     
-                    // 4. 下次提醒列表
+                    // 下次提醒列表
                     ReminderListCard(reminders: appViewModel.myReminders) {
                         showAddReminderSheet = true // 点击加号触发的操作
                     }
@@ -88,97 +104,59 @@ struct HealthOverviewView: View {
             LogHealthDataView()
         }
         .onAppear {
-            // 进入页面时主动拉取最新的提醒事项
+            // 1. 拉取提醒
             appViewModel.fetchRemindersFromCloud()
+            appViewModel.fetchHealthHistory()
+            // 2. 拉取宠物档案 (确保你在 AppViewModel 实现了这个方法)
+            appViewModel.fetchPetProfileFromCloud()
         }
     }
 }
 
 // MARK: - 子组件：体重趋势图表
 struct WeightChartCard: View {
+    @EnvironmentObject var appViewModel: AppViewModel
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("体重趋势(kg)")
+        VStack(alignment: .leading, spacing: 16) {
+            Text("体重趋势 (kg)")
                 .font(.headline)
                 .fontWeight(.bold)
                 .foregroundColor(Color(red: 0.35, green: 0.25, blue: 0.25))
             
-            // 模拟图表区域
-            ZStack {
-                // 背景网格线
-                VStack(spacing: 15) {
-                    ForEach((0..<7).reversed(), id: \.self) { i in
-                        HStack {
-                            Text("\(i * 3)")
-                                .font(.caption2)
-                                .foregroundColor(.gray)
-                                .frame(width: 20, alignment: .trailing)
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.1))
-                                .frame(height: 1)
-                        }
+            if appViewModel.healthHistory.isEmpty {
+                // 数据加载中的占位提示
+                ContentUnavailableView("暂无历史数据", systemImage: "chart.line.uptrend.xyaxis", description: Text("开始记录你的宠物体重吧"))
+                    .frame(height: 150)
+            } else {
+                // 👇 核心：动态折线图
+                Chart {
+                    ForEach(appViewModel.healthHistory) { record in
+                        // 1. 绘制折线
+                        LineMark(
+                            x: .value("日期", record.date, unit: .day),
+                            y: .value("体重", record.weight)
+                        )
+                        .interpolationMethod(.catmullRom) // 让线条变圆润
+                        .foregroundStyle(Color.orange)
+                        
+                        // 2. 绘制数据点
+                        PointMark(
+                            x: .value("日期", record.date, unit: .day),
+                            y: .value("体重", record.weight)
+                        )
+                        .foregroundStyle(Color.orange)
                     }
                 }
-                
-                // 模拟折线
-                Path { path in
-                    path.move(to: CGPoint(x: 30, y: 15))
-                    path.addLine(to: CGPoint(x: 80, y: 12))
-                    path.addLine(to: CGPoint(x: 140, y: 16))
-                    path.addLine(to: CGPoint(x: 200, y: 10))
-                    path.addLine(to: CGPoint(x: 260, y: 12))
-                    path.addLine(to: CGPoint(x: 320, y: 8))
-                }
-                .stroke(Color(red: 0.98, green: 0.69, blue: 0.29), lineWidth: 3)
-                
-                // 模拟渐变填充
-                Path { path in
-                    path.move(to: CGPoint(x: 30, y: 15))
-                    path.addLine(to: CGPoint(x: 80, y: 12))
-                    path.addLine(to: CGPoint(x: 140, y: 16))
-                    path.addLine(to: CGPoint(x: 200, y: 10))
-                    path.addLine(to: CGPoint(x: 260, y: 12))
-                    path.addLine(to: CGPoint(x: 320, y: 8))
-                    path.addLine(to: CGPoint(x: 320, y: 100))
-                    path.addLine(to: CGPoint(x: 30, y: 100))
-                }
-                .fill(LinearGradient(gradient: Gradient(colors: [Color.orange.opacity(0.2), Color.orange.opacity(0.0)]), startPoint: .top, endPoint: .bottom))
-                
-                // 悬浮提示框
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("01.22")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    HStack {
-                        Circle().fill(Color.orange).frame(width: 8, height: 8)
-                        Text("体重")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                        Text("15.4")
-                            .font(.headline)
-                            .fontWeight(.bold)
+                .frame(height: 150)
+                // 设置坐标轴样式
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .day)) { value in
+                        AxisValueLabel(format: .dateTime.month(.twoDigits).day(.twoDigits))
                     }
                 }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(10)
-                .shadow(color: .gray.opacity(0.2), radius: 5, x: 0, y: 2)
-                .offset(x: -10, y: -20)
+                .chartYScale(domain: .automatic(includesZero: false)) // 自动缩放 Y 轴，不强制从 0 开始，折线波动更明显
             }
-            .frame(height: 120)
-            
-            // 底部日期
-            HStack {
-                Text("01.20").frame(maxWidth: .infinity)
-                Text("01.22").frame(maxWidth: .infinity)
-                Text("01.24").frame(maxWidth: .infinity)
-                Text("01.26").frame(maxWidth: .infinity)
-                Text("01.28").frame(maxWidth: .infinity)
-                Text("01.29").frame(maxWidth: .infinity)
-            }
-            .font(.caption2)
-            .foregroundColor(.gray)
-            .padding(.leading, 20)
         }
         .padding()
         .background(Color.white)

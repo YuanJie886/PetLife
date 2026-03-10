@@ -1,70 +1,61 @@
-//
-//  LogHealthDataView.swift
-//  PetLife
-//
-//  Created by lhz on 2026/3/6.
-//
-
 import SwiftUI
 
-// MARK: - 新增的子页面：记录健康数据表单
 struct LogHealthDataView: View {
-    @Environment(\.dismiss) var dismiss // 用于关闭弹窗
+    @Environment(\.dismiss) var dismiss
+    // 👇 1. 引入全局 ViewModel，这样才能修改数据
+    @EnvironmentObject var viewModel: AppViewModel
     
-    // 绑定输入框的变量
     @State private var weight: String = ""
     @State private var waterIntake: String = ""
-    @State private var calories: String = ""
+    // 💡 考虑到你之前的模型修改，我们把卡路里改成了更有趣的“心情状态”
+    @State private var selectedStatus: String = "活泼"
+    
+    let statusOptions = ["活泼", "安静", "调皮", "想睡觉", "生病中"]
     
     var body: some View {
         NavigationView {
             Form {
+                // --- 第一部分：数值输入 ---
                 Section(header: Text("今日健康指标").foregroundColor(.gray)) {
-                    // 体重输入
                     HStack {
                         Image(systemName: "scalemass.fill").foregroundColor(.orange)
                         Text("体重 (kg)")
                         Spacer()
-                        TextField("例如: 15.5", text: $weight)
-                            .keyboardType(.decimalPad) // 调出带小数点的数字键盘
+                        TextField("例如: 4.5", text: $weight)
+                            .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                     }
                     
-                    // 饮水量输入
                     HStack {
                         Image(systemName: "drop.fill").foregroundColor(.cyan)
                         Text("饮水量 (ml)")
                         Spacer()
-                        TextField("例如: 450", text: $waterIntake)
-                            .keyboardType(.numberPad) // 调出纯数字键盘
-                            .multilineTextAlignment(.trailing)
-                    }
-                    
-                    // 卡路里输入
-                    HStack {
-                        Image(systemName: "flame.fill").foregroundColor(.red)
-                        Text("消耗热量 (kcal)")
-                        Spacer()
-                        TextField("例如: 1200", text: $calories)
+                        TextField("例如: 200", text: $waterIntake)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
+                }
+                
+                // --- 第二部分：状态选择 ---
+                Section(header: Text("此刻状态").foregroundColor(.gray)) {
+                    Picker("宠物状态", selection: $selectedStatus) {
+                        ForEach(statusOptions, id: \.self) { status in
+                            Text(status).tag(status)
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
             }
             .navigationTitle("记录日常")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("取消") {
-                        dismiss()
-                    }
-                    .foregroundColor(.gray)
+                    Button("取消") { dismiss() }
+                        .foregroundColor(.gray)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("保存") {
-                        // 💡 之后有了数据库，这里就是把 weight 和 waterIntake 存入后端的代码
-                        print("保存成功: 体重 \(weight)kg, 饮水 \(waterIntake)ml")
-                        dismiss() // 保存后关闭页面
+                        saveDataToViewModel()
                     }
                     .foregroundColor(Color(red: 0.98, green: 0.69, blue: 0.29))
                     .fontWeight(.bold)
@@ -72,4 +63,27 @@ struct LogHealthDataView: View {
             }
         }
     }
+    
+    // 💡 核心逻辑：将数据同步到本地、更新当前状态云端、并存入历史记录子集合
+        private func saveDataToViewModel() {
+            // 1. 安全地转换输入数据
+            let newWeight = Double(weight) ?? viewModel.myPet.weight
+            let newWater = Int(waterIntake) ?? viewModel.myPet.waterIntake
+            
+            // 2. 更新本地视图数据（即时反馈给 UI）
+            viewModel.myPet.weight = newWeight
+            viewModel.myPet.waterIntake = newWater
+            viewModel.myPet.status = selectedStatus
+            
+            // 3. ⚡️ 同步到云端 - 覆盖“当前宠物档案”（用于首页看板）
+            viewModel.savePetProfileToCloud()
+            
+            // 4. 📈 同步到云端 - 存入“历史记录子集合”（用于折线图）
+            // 这一步非常重要，它会在 health_logs 集合里创建一条新数据
+            viewModel.saveDailyLog(weight: newWeight, water: newWater)
+            
+            print("✅ 数据已同步！当前状态已更新，历史记录已追加。")
+            
+            dismiss()
+        }
 }

@@ -171,21 +171,22 @@ struct DynamicFeedCard: View {
 }
 
 struct DynamicPetInfoCard: View {
-    var pet: PetProfile // 👈 接收外部传进来的宠物数据
+    var pet: PetProfile
     
     var body: some View {
         VStack(spacing: 15) {
             HStack {
+                // ... 头像部分保持不变 ...
                 Circle()
                     .fill(Color.white)
                     .frame(width: 50, height: 50)
                     .overlay(Image(systemName: "cat.fill").foregroundColor(.orange))
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(pet.name) (\(pet.breed))") // 使用真实数据
+                    Text("\(pet.name) (\(pet.breed))")
                         .font(.headline)
                         .fontWeight(.bold)
-                    Text("今天状态: \(pet.status)") // 使用真实数据
+                    Text("今天状态: \(pet.status)")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -201,13 +202,11 @@ struct DynamicPetInfoCard: View {
                 }
             }
             
-            HStack {
-                // 👇 把这三个 StatItem 改成 StatBox 就可以了！
-                StatBox(title: "步数", value: "\(pet.steps)")
-                Spacer()
-                StatBox(title: "热量", value: "\(pet.calories)")
-                Spacer()
-                StatBox(title: "睡眠", value: "\(pet.sleepHours)h")
+            HStack(spacing: 12) {
+                // 👇 替换为更实用的生活数据
+                StatBox(title: "当前体重", value: String(format: "%.1fkg", pet.weight))
+                StatBox(title: "今日饮水", value: "\(pet.waterIntake)ml")
+                StatBox(title: "下个提醒", value: pet.nextReminder)
             }
         }
         .padding()

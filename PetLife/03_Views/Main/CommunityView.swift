@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct CommunityView: View {
+    @EnvironmentObject var appViewModel: AppViewModel // 👈 引入全局 ViewModel
+    
     var body: some View {
         ZStack {
             // 背景色
@@ -50,30 +52,27 @@ struct CommunityView: View {
                 // 👇 2. 可滚动的帖子列表
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        // 模拟第一条帖子
-                        CommunityPostCard(
-                            avatar: "person.circle.fill",
-                            name: "铲屎官小王",
-                            time: "2小时前",
-                            content: "周末想组织大家带毛孩子去西山公园聚聚，有人组队吗？✨",
-                            imageCount: 2,
-                            likes: 42,
-                            comments: 15
-                        )
-                        
-                        // 模拟第二条帖子
-                        CommunityPostCard(
-                            avatar: "person.crop.circle",
-                            name: "加菲猫猫馆",
-                            time: "5小时前",
-                            content: "今日店里的猫主子们在线接客啦，欢迎大家来撸猫~ 🍵",
-                            imageCount: 1,
-                            likes: 128,
-                            comments: 36
-                        )
+                        if appViewModel.hotFeeds.isEmpty {
+                            ProgressView("正在加载动态...")
+                                .padding(.top, 50)
+                        } else {
+                            // 👇 循环渲染真实的云端动态
+                            ForEach(appViewModel.hotFeeds) { post in
+                                NavigationLink(destination: FeedDetailView(post: post)) {
+                                    CommunityPostCard(post: post)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
                     }
                     .padding(.vertical, 15)
                 }
+            }
+        }
+        .onAppear {
+            // 如果数据为空，再去请求一次（防止从其他入口进来时没加载）
+            if appViewModel.hotFeeds.isEmpty {
+                appViewModel.fetchFeedsFromCloud()
             }
         }
         // 隐藏系统自带的导航栏标题，因为我们上面自定义了更好看的
@@ -83,64 +82,96 @@ struct CommunityView: View {
 
 // MARK: - 子组件：社区帖子卡片
 struct CommunityPostCard: View {
-    let avatar: String
-    let name: String
-    let time: String
-    let content: String
-    let imageCount: Int
-    let likes: Int
-    let comments: Int
+    let post: FeedPost
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // 用户头像与昵称
             HStack {
-                Image(systemName: avatar)
+                Image(systemName: post.authorAvatar)
                     .resizable()
                     .frame(width: 36, height: 36)
-                    .foregroundColor(.gray.opacity(0.5))
+                    .foregroundColor(Color(red: 0.98, green: 0.69, blue: 0.29)) // 换回主题色
                 
-                Text(name)
+                Text(post.authorName)
                     .font(.subheadline)
                     .fontWeight(.bold)
                     .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
                 
                 Spacer()
                 
-                Text(time)
+                Text(post.timeAgo)
                     .font(.caption)
                     .foregroundColor(.gray)
             }
             
             // 帖子文本内容
-            Text(content)
+            Text(post.content)
                 .font(.subheadline)
                 .foregroundColor(Color(red: 0.2, green: 0.2, blue: 0.2))
                 .lineLimit(3)
             
-            // 模拟图片网格
-            if imageCount > 0 {
-                HStack(spacing: 10) {
-                    ForEach(0..<imageCount, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.15))
-                            .frame(height: 120)
-                            .cornerRadius(10)
-                            .overlay(
-                                Image(systemName: "photo")
-                                    .foregroundColor(.gray.opacity(0.5))
-                            )
+            // 图片展示逻辑 (与DynamicFeedCard类似)
+            Group {
+                if post.imageUrl.starts(with: "http") {
+                    AsyncImage(url: URL(string: post.imageUrl)) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 180)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(10)
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity, maxHeight: 180)
+                                .clipped()
+                                .cornerRadius(10)
+                        case .failure:
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundColor(.gray)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 180)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(10)
+                        @unknown default:
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundColor(.gray)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 180)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(10)
+                        }
                     }
+                } else if UIImage(named: post.imageUrl) != nil {
+                    Image(post.imageUrl)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity, maxHeight: 180)
+                        .clipped()
+                        .cornerRadius(10)
+                } else if !post.imageUrl.isEmpty {
+                    Image(systemName: post.imageUrl)
+                        .font(.largeTitle)
+                        .foregroundColor(.gray)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 180)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(10)
                 }
             }
             
             // 底部操作区 (点赞、评论、分享)
             HStack {
                 Image(systemName: "heart")
-                Text("\(likes)")
+                Text("\(post.likes)")
                 Spacer().frame(width: 20)
                 Image(systemName: "message")
-                Text("\(comments)")
+                Text("\(post.comments)")
                 Spacer()
                 Image(systemName: "square.and.arrow.up")
             }
@@ -158,4 +189,5 @@ struct CommunityPostCard: View {
 
 #Preview {
     CommunityView()
+        .environmentObject(AppViewModel())
 }

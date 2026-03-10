@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseFirestore
+import PhotosUI
 
 struct PublishPostView: View {
     @Environment(\.dismiss) var dismiss
@@ -7,8 +8,11 @@ struct PublishPostView: View {
     
     // 动态内容
     @State private var postText = ""
-    // 图片选择（支持系统图标/本地图片/网络图片）
-    @State private var selectedImage: String = "photo"
+    // 图片选择（真实图片上传）
+    @State private var selectedItem: PhotosPickerItem? = nil
+    @State private var selectedUIImage: UIImage? = nil
+    @State private var isUploading: Bool = false
+    
     // 输入状态（控制发布按钮是否可用）
     @State private var isPostValid: Bool = false
     
@@ -70,38 +74,40 @@ struct PublishPostView: View {
                         
                         HStack(spacing: 15) {
                             // 图片选择按钮
-                            Button(action: {
-                                // 这里可以扩展：弹出图片选择器（相册/拍照）
-                                // 暂时模拟切换图片
-                                let imageOptions = ["photo", "camera.macro", "pawprint.fill", "heart.fill"]
-                                if let currentIndex = imageOptions.firstIndex(of: selectedImage) {
-                                    let nextIndex = (currentIndex + 1) % imageOptions.count
-                                    selectedImage = imageOptions[nextIndex]
-                                }
-                            }) {
+                            PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 12)
                                         .fill(Color.white)
                                         .frame(width: 80, height: 80)
                                         .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
                                     
-                                    Image(systemName: selectedImage)
+                                    Image(systemName: "photo.on.rectangle.angled")
                                         .font(.title)
                                         .foregroundColor(Color(red: 0.98, green: 0.69, blue: 0.29))
                                 }
                             }
+                            .onChange(of: selectedItem) { newItem in
+                                Task {
+                                    if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                       let uiImage = UIImage(data: data) {
+                                        selectedUIImage = uiImage
+                                    }
+                                }
+                            }
                             
                             // 图片预览（选中后显示）
-                            if selectedImage != "photo" {
+                            if let image = selectedUIImage {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 12)
                                         .fill(Color.white)
                                         .frame(width: 80, height: 80)
                                         .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
                                     
-                                    Image(systemName: selectedImage)
-                                        .font(.title)
-                                        .foregroundColor(Color(red: 0.98, green: 0.69, blue: 0.29))
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 80, height: 80)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
                                     
                                     // 关闭按钮
                                     VStack {
@@ -116,12 +122,15 @@ struct PublishPostView: View {
                                                         .foregroundColor(.white)
                                                 )
                                                 .onTapGesture {
-                                                    selectedImage = "photo"
+                                                    selectedUIImage = nil
+                                                    selectedItem = nil
                                                 }
+                                                .padding(4)
                                         }
                                         Spacer()
                                     }
                                 }
+                                .frame(width: 80, height: 80) // 确保 ZStack 整体与内部 frame 一致
                             }
                             
                             Spacer()
@@ -141,22 +150,35 @@ struct PublishPostView: View {
                     Spacer()
                     
                     // 4. 底部发布按钮（吸底设计）
-                    Button(action: publishPost) {
-                        Text("发布动态")
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(isPostValid ? Color(red: 0.98, green: 0.69, blue: 0.29) : Color.gray.opacity(0.3))
-                            )
-                            .shadow(color: Color.orange.opacity(0.3), radius: 8, x: 0, y: 4)
+                    Button(action: {
+                        if !isUploading {
+                            publishPost()
+                        }
+                    }) {
+                        HStack {
+                            if isUploading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .padding(.trailing, 8)
+                                Text("正在发布...")
+                            } else {
+                                Text("发布动态")
+                            }
+                        }
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(isPostValid && !isUploading ? Color(red: 0.98, green: 0.69, blue: 0.29) : Color.gray.opacity(0.3))
+                        )
+                        .shadow(color: Color.orange.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 20)
-                    .disabled(!isPostValid) // 不可用时禁用按钮
+                    .disabled(!isPostValid || isUploading) // 不可用或正在上传时禁用按钮
                 }
             }
             .navigationTitle("发布新动态")
@@ -171,12 +193,14 @@ struct PublishPostView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     // 备用发布按钮（和底部按钮二选一，这里保留）
-                    Button("发布") {
-                        publishPost()
+                    Button(isUploading ? "发布中..." : "发布") {
+                        if !isUploading {
+                            publishPost()
+                        }
                     }
-                    .foregroundColor(isPostValid ? Color(red: 0.98, green: 0.69, blue: 0.29) : .gray)
+                    .foregroundColor(isPostValid && !isUploading ? Color(red: 0.98, green: 0.69, blue: 0.29) : .gray)
                     .fontWeight(.bold)
-                    .disabled(!isPostValid)
+                    .disabled(!isPostValid || isUploading)
                 }
             }
             .onReceive(textObserver) { _ in
@@ -197,21 +221,46 @@ struct PublishPostView: View {
             return
         }
         
+        isUploading = true
+        
+        if let image = selectedUIImage {
+            // 如果选择了图片，先上传图片
+            appViewModel.uploadImageToStorage(image: image) { url in
+                DispatchQueue.main.async {
+                    if let imageUrl = url {
+                        saveFeed(imageUrl: imageUrl)
+                    } else {
+                        // 上传失败处理，使用默认占位图
+                        print("❌ 图片上传失败，使用默认占位图")
+                        saveFeed(imageUrl: "photo")
+                        isUploading = false
+                    }
+                }
+            }
+        } else {
+            // 如果没有选择图片，使用默认占位图标
+            saveFeed(imageUrl: "photo")
+        }
+    }
+    
+    // 保存动态记录
+    private func saveFeed(imageUrl: String) {
         // 2. 创建动态模型
         let newFeed = FeedPost(
             id: "", // 空ID，由Firebase自动生成
             authorName: "布丁的主人", // 可替换为用户昵称（后续可扩展）
             authorAvatar: "person.circle.fill",
             content: postText,
-            imageUrl: selectedImage,
+            imageUrl: imageUrl,
             likes: 0,
             comments: 0,
-            timeAgo: "刚刚"
+            timeAgo: "刚刚" // 也可以用真实的时间，前端通常展示相对时间
         )
         
         // 3. 保存到云端
         appViewModel.saveFeedToCloud(feed: newFeed)
         
+        isUploading = false
         // 4. 关闭页面
         dismiss()
     }
